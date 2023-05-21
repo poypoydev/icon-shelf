@@ -1,42 +1,40 @@
 import { join } from 'path';
-import { promises as fs, statSync } from 'fs';
+import { promises as fs } from 'fs';
 
-export async function getAllFiles(folderPath: string) {
+// Define a type for your file data objects
+interface FileData {
+  name: string;
+  imageSrc: string;
+  byteSize: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export async function getAllFiles(folderPath: string): Promise<FileData[]> {
   const entries = await fs.readdir(folderPath, { withFileTypes: true });
 
-  // Get files within the current directory and add a path key to the file objects
-  const files = entries
-    .filter((file) => !file.isDirectory() && !/^\..*/.test(file.name))
-    .map((file) => {
-      const iconPath = join(folderPath, file.name);
-      const fileStats = statSync(iconPath);
+  const filePromises = entries
+    .filter(file => !file.isDirectory() && !/^\..*/.test(file.name))
+    .map(async (file): Promise<FileData> => {
+      const filePath = join(folderPath, file.name);
+      const fileStats = await fs.stat(filePath);
 
       return {
-        ...file,
-        imageSrc: iconPath,
+        name: file.name,
+        imageSrc: filePath,
         byteSize: fileStats.size,
         createdAt: fileStats.birthtimeMs,
         updatedAt: fileStats.mtimeMs,
       };
     });
 
-  // Get folders within the current directory
-  // const folders = entries.filter((folder) => folder.isDirectory());
+  const files = await Promise.all(filePromises);
 
-  /*
-    Add the found files within the subdirectory to the files array by calling the
-    current function itself
-  */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  // const folderFilesPromise: Promise<any>[] = [];
+  const folderPromises: Promise<FileData[]>[] = entries
+    .filter(folder => folder.isDirectory())
+    .map(folder => getAllFiles(join(folderPath, folder.name)));
 
-  // folders.forEach((folder) => {
-  //   folderFilesPromise.push(getAllFiles(path.join(folderPath, folder.name)));
-  // });
+  const foldersFiles = await Promise.all(folderPromises);
 
-  // const foldersFiles = await Promise.all(folderFilesPromise);
-
-  // foldersFiles.forEach((folderFiles) => files.push(...folderFiles));
-
-  return files;
+  return files.concat(...foldersFiles);
 }
